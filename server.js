@@ -86,14 +86,9 @@ app.post("/api/sync",(req,res)=>{
 // ---------------------------------------------------------------------
 // Automatic multilingual translation
 // ---------------------------------------------------------------------
-// Supported internal language codes (kept in sync with public/js/i18n.js
-// and server/translation.js's LANG_MAP).
 const TRANSLATE_LANGS = new Set(["en", "as", "mni", "kha", "miz"]);
 
-// Minimal, dependency-free rate limiter: max 60 translate requests per
-// minute per IP. Prevents obvious abuse (unlimited huge text submissions
-// are also rejected in server/translation.js via MAX_TEXT_LENGTH).
-const translateHits = new Map(); // ip -> [timestamps]
+const translateHits = new Map();
 const TRANSLATE_WINDOW_MS = 60 * 1000;
 const TRANSLATE_MAX_PER_WINDOW = 60;
 function isRateLimited(ip) {
@@ -137,8 +132,6 @@ app.post("/api/translate", async (req, res) => {
     setCachedTranslation(source, target, text, translatedText);
     res.json({ translatedText, sourceLanguage: source, targetLanguage: target, cached: false });
   } catch (err) {
-    // Never break the game and never leak internal errors: fall back to
-    // the original English text and log the real error server-side.
     console.error("Translation request failed:", err.message);
     const fallbackText = (req.body && typeof req.body.text === "string") ? req.body.text : "";
     res.json({
@@ -156,4 +149,9 @@ app.get("*",(req,res)=>{
   res.sendFile(path.join(__dirname,"public","index.html"));
 });
 
-app.listen(PORT,()=>console.log(`SIH platform running at http://localhost:${PORT}`));
+// Vercel deployment ke liye app ko export karein aur local par listen chalayein
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => console.log(`SIH platform running at http://localhost:${PORT}`));
+}
+
+module.exports = app;
