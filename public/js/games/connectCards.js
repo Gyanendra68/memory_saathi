@@ -8,7 +8,7 @@ window.GameCards = {
             </div>
 
             <button id="start-pattern" class="btn-large">
-                Start Pattern
+                ${t("games.cards.startPattern", "Start Pattern")}
             </button>
 
             <p id="pattern-msg"></p>
@@ -38,8 +38,8 @@ window.GameCards = {
                 }
             }
 
-            document.getElementById("pattern-msg").innerText =
-                "Watch carefully...";
+            document.getElementById("pattern-msg").innerHTML =
+                t("games.cards.watchCarefully", "Watch carefully...");
 
             await wait(1000);
 
@@ -54,8 +54,8 @@ window.GameCards = {
                 await wait(200);
             }
 
-            document.getElementById("pattern-msg").innerText =
-                "Repeat the pattern!";
+            document.getElementById("pattern-msg").innerHTML =
+                t("games.cards.repeatPattern", "Repeat the pattern!");
 
             const startTime = Date.now();
             const userPattern = [];

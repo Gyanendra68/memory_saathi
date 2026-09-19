@@ -2,6 +2,8 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { translateText } = require("./server/translation");
+const { getCachedTranslation, setCachedTranslation } = require("./server/translation-cache");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -79,6 +81,74 @@ app.post("/api/sync",(req,res)=>{
   const db=readDB(), items=Array.isArray(req.body?.items)?req.body.items:[];
   for(const item of items) db.sessions.push({id:crypto.randomUUID(),createdAt:new Date().toISOString(),...item});
   writeDB(db); res.json({ok:true,synced:items.length});
+});
+
+// ---------------------------------------------------------------------
+// Automatic multilingual translation
+// ---------------------------------------------------------------------
+// Supported internal language codes (kept in sync with public/js/i18n.js
+// and server/translation.js's LANG_MAP).
+const TRANSLATE_LANGS = new Set(["en", "as", "mni", "kha", "miz"]);
+
+// Minimal, dependency-free rate limiter: max 60 translate requests per
+// minute per IP. Prevents obvious abuse (unlimited huge text submissions
+// are also rejected in server/translation.js via MAX_TEXT_LENGTH).
+const translateHits = new Map(); // ip -> [timestamps]
+const TRANSLATE_WINDOW_MS = 60 * 1000;
+const TRANSLATE_MAX_PER_WINDOW = 60;
+function isRateLimited(ip) {
+  const now = Date.now();
+  const hits = (translateHits.get(ip) || []).filter(t => now - t < TRANSLATE_WINDOW_MS);
+  hits.push(now);
+  translateHits.set(ip, hits);
+  return hits.length > TRANSLATE_MAX_PER_WINDOW;
+}
+
+app.post("/api/translate", async (req, res) => {
+  try {
+    if (isRateLimited(req.ip)) {
+      return res.status(429).json({ error: "Too many translation requests, please slow down." });
+    }
+
+    const { text, sourceLanguage, targetLanguage } = req.body || {};
+    const source = sourceLanguage || "en";
+    const target = targetLanguage;
+
+    if (typeof text !== "string" || !text.trim()) {
+      return res.status(400).json({ error: "text is required" });
+    }
+    if (text.length > 2000) {
+      return res.status(400).json({ error: "text is too long" });
+    }
+    if (!TRANSLATE_LANGS.has(source) || !TRANSLATE_LANGS.has(target)) {
+      return res.status(400).json({ error: "Unsupported language code" });
+    }
+
+    if (source === target) {
+      return res.json({ translatedText: text, sourceLanguage: source, targetLanguage: target, cached: false });
+    }
+
+    const existing = getCachedTranslation(source, target, text);
+    if (existing !== null) {
+      return res.json({ translatedText: existing, sourceLanguage: source, targetLanguage: target, cached: true });
+    }
+
+    const translatedText = await translateText(text, source, target);
+    setCachedTranslation(source, target, text, translatedText);
+    res.json({ translatedText, sourceLanguage: source, targetLanguage: target, cached: false });
+  } catch (err) {
+    // Never break the game and never leak internal errors: fall back to
+    // the original English text and log the real error server-side.
+    console.error("Translation request failed:", err.message);
+    const fallbackText = (req.body && typeof req.body.text === "string") ? req.body.text : "";
+    res.json({
+      translatedText: fallbackText,
+      sourceLanguage: (req.body && req.body.sourceLanguage) || "en",
+      targetLanguage: (req.body && req.body.targetLanguage) || "",
+      cached: false,
+      fallback: true
+    });
+  }
 });
 
 app.get("*",(req,res)=>{

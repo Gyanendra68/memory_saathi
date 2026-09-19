@@ -46,3 +46,137 @@ The local database directory is now created automatically on first run, so the d
 Demo credentials:
 - Elderly User → `demo123`
 - Caregiver → `demo123`
+
+## Automatic multilingual translation
+
+MemorySaathi ships with five languages (English, Assamese, Manipuri,
+Khasi, Mizo) and a translation layer that means **you never have to
+hand-write five translations for a new game.**
+
+### How it works
+
+1. `public/js/i18n.js` still exposes the original, hand-authored
+   `window.I18N` dictionary and `t(key)` you already had — every
+   existing call in the app keeps working exactly as before.
+2. `t(key, englishFallback, vars?)` now checks, in order:
+   1. **Static dictionary** — if `key` is one of the hand-translated
+      keys (`welcome`, `games`, `play`, ...), that translation is
+      returned immediately, unchanged.
+   2. **Local cache** (`localStorage`) — if this exact English string
+      has already been translated into the current language, the
+      cached translation is returned immediately.
+   3. **Backend auto-translation** — otherwise, the English
+      `englishFallback` is shown right away (so the UI never blocks
+      or shows a blank/broken string), and a background request is
+      sent to `POST /api/translate`. When the translation comes
+      back it is cached (both in `localStorage` and on the server)
+      and swapped into the page in place.
+3. The server endpoint `POST /api/translate` (added to the existing
+   `server.js`, all previous routes untouched) calls
+   `server/translation.js`, which is an isolated
+   `translateText(text, sourceLanguage, targetLanguage)` function
+   wrapping Google Translate's free, keyless web endpoint. Results
+   are cached to `data/translation-cache.json` via
+   `server/translation-cache.js`, so the same sentence is never
+   translated twice — by anyone, on any device.
+4. If translation fails for any reason (offline, engine down,
+   language unsupported), the original English text is kept on
+   screen and the real error is only logged server-side — the game
+   itself never breaks.
+
+### Adding a new game — you only ever write English
+
+```js
+// public/js/games/myNewGame.js
+window.GameMyNewGame = {
+  start() {
+    const area = document.getElementById("gameArea");
+    area.innerHTML = `
+      <h3>${t("games.myNewGame.title", "Memory Challenge")}</h3>
+      <p>${t("games.myNewGame.instructions",
+              "Remember the cards and find the matching pair.")}</p>
+      <button id="mn-start" class="btn-large">
+        ${t("start", "Start Game")}
+      </button>
+    `;
+    // ...game logic unchanged...
+  }
+};
+```
+
+That's it — no `assamese.json`, `manipuri.json`, `khasi.json` or
+`mizo.json` to create. The first time a user views this game in, say,
+Khasi, the English fallback shows instantly while the real
+translation is fetched in the background and cached; every user
+after that gets it instantly from cache.
+
+### Dynamic text (scores, counters, etc.)
+
+Wrap the changing part in `{curlyBraces}` and pass a `vars` object.
+The `{var}` token is protected before the text is sent to the
+translation engine (so the engine only ever translates the fixed
+words around it) and substituted back in afterwards:
+
+```js
+area.innerHTML = t(
+  "games.myNewGame.roundOf",
+  "Round {current} of {total}",
+  { current: 3, total: 10 }
+);
+```
+
+### Backend API
+
+```
+POST /api/translate
+Content-Type: application/json
+
+{ "text": "Remember the cards and find the matching pair.",
+  "sourceLanguage": "en",
+  "targetLanguage": "as" }
+```
+
+First request (not cached yet):
+```json
+{ "translatedText": "...", "sourceLanguage": "en", "targetLanguage": "as", "cached": false }
+```
+
+Second, identical request:
+```json
+{ "translatedText": "...", "sourceLanguage": "en", "targetLanguage": "as", "cached": true }
+```
+
+Internal language codes (used everywhere in the app, e.g.
+`localStorage.getItem("lang")`) and their mapping to the translation
+engine's codes, defined in `server/translation.js`:
+
+| MemorySaathi code | Language           | Engine code |
+|---|---|---|
+| `en`  | English             | `en` |
+| `as`  | Assamese            | `as` |
+| `mni` | Manipuri (Meitei)   | `mni-Mtei` |
+| `kha` | Khasi               | `kha` |
+| `miz` | Mizo                | `lus` |
+
+### Environment variables
+None required. The translation endpoint needs no API key.
+
+### Limitations (discovered while building this)
+- The engine is Google Translate's free, unofficial web endpoint
+  (`translate.googleapis.com/translate_a/single`) — chosen because it
+  is the only genuinely free option that actually supports Assamese,
+  Manipuri, Khasi and Mizo (verified against Google's published
+  language list; a self-hosted engine like LibreTranslate does **not**
+  support these languages). Being unofficial, Google could change or
+  throttle it without notice — if that ever happens, only
+  `server/translation.js` needs to change, since the rest of the app
+  only calls `translateText()`.
+- Translation quality for Khasi, Manipuri and Mizo is generally lower
+  than for widely-used languages, since less training data exists for
+  these languages — this is a limitation of the underlying engine, not
+  of this integration.
+- `POST /api/translate` is capped at 2000 characters per request and
+  60 requests/minute/IP to prevent abuse.
+- Translations are cached per exact English string. Changing the
+  English fallback text for a key (even fixing a typo) is treated as
+  new text and will be translated again on next use.

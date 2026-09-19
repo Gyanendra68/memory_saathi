@@ -21,7 +21,7 @@ window.GameFace = {
 
         // Show faces to memorize
         area.innerHTML = `
-            <h3>Memorize these faces:</h3>
+            <h3>${t("games.face.memorizeFaces", "Memorize these faces:")}</h3>
             <div>
                 ${targets.map(e =>
                     `<span class="emoji-btn"
@@ -30,13 +30,13 @@ window.GameFace = {
                     </span>`
                 ).join("")}
             </div>
-            <p id="face-memory-msg">You have 5 seconds...</p>
+            <p id="face-memory-msg">${t("games.face.fiveSeconds", "You have 5 seconds...")}</p>
         `;
 
         // After 5 seconds, show choices
         setTimeout(() => {
             area.innerHTML = `
-                <h3>Select the 4 faces you saw:</h3>
+                <h3>${t("games.face.selectFaces", "Select the 4 faces you saw:")}</h3>
 
                 <div id="face-options">
                     ${options.map((e, i) =>
@@ -50,7 +50,7 @@ window.GameFace = {
 
                 <br>
                 <button id="face-submit" class="btn-large">
-                    Submit
+                    ${t("submit", "Submit")}
                 </button>
             `;
 

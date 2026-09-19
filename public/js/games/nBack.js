@@ -3,10 +3,9 @@ window.GameNBack = {
         const area = document.getElementById("gameArea");
 
         area.innerHTML = `
-            <h3>2-Back Memory</h3>
+            <h3>${t("games.nback.title", "2-Back Memory")}</h3>
             <p>
-                Click MATCH if the current letter matches
-                the one shown 2 steps ago.
+                ${t("games.nback.instructions", "Click MATCH if the current letter matches the one shown 2 steps ago.")}
             </p>
 
             <div id="nb-display"
@@ -20,7 +19,7 @@ window.GameNBack = {
 
             <button id="nb-match"
                     class="btn-large">
-                MATCH
+                ${t("games.nback.match", "MATCH")}
             </button>
         `;
 

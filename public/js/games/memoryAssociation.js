@@ -17,7 +17,7 @@ window.GameAssociation = {
 
         // Memorization screen
         area.innerHTML = `
-            <h3>Memorize the Associations</h3>
+            <h3>${t("games.association.memorize", "Memorize the Associations")}</h3>
 
             <div style="font-size:1.5rem; line-height:2;">
                 ${pairs.map(p =>
@@ -26,7 +26,7 @@ window.GameAssociation = {
             </div>
 
             <p id="association-msg">
-                You have 6 seconds...
+                ${t("games.association.sixSeconds", "You have 6 seconds...")}
             </p>
         `;
 
@@ -50,8 +50,8 @@ window.GameAssociation = {
 
             area.innerHTML = `
                 <h3>
-                    What was associated with
-                    <b>"${target[0]}"</b>?
+                    ${t("games.association.whatWasAssociated", 'What was associated with "{word}"?', { word: target[0] })
+                        .replace(target[0], `<b>${target[0]}</b>`)}
                 </h3>
 
                 <div style="
