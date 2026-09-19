@@ -1,0 +1,8 @@
+{
+  "name": "sih-dementia-cognitive-platform",
+  "version": "1.0.0",
+  "description": "Offline-first AI-assisted cognitive gaming and memory assistance platform for elderly users.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "dev": "node server.js" },
+  "dependencies": { "express": "^4.21.2" }
+}
