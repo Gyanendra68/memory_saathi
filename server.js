@@ -7,29 +7,50 @@ const { getCachedTranslation, setCachedTranslation } = require("./server/transla
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA = path.join(__dirname, "data", "db.json");
+
+// Vercel par read-only error se bachne ke liye /tmp folder ka use karein
+const DATA = process.env.VERCEL 
+  ? path.join("/tmp", "db.json") 
+  : path.join(__dirname, "data", "db.json");
 
 app.use(express.json({limit:"1mb"}));
 app.use(express.static(path.join(__dirname, "public")));
 
 function readDB(){
-  // Ensure the local data directory exists before creating the first database.
-  fs.mkdirSync(path.dirname(DATA), { recursive: true });
-  if(!fs.existsSync(DATA)){
-    const db={users:[
-      {id:"elder-1",name:"Demo Elder",role:"elderly",pin:"demo123"},
-      {id:"caregiver-1",name:"Demo Caregiver",role:"caregiver",pin:"demo123"}
-    ],sessions:[],reminders:[
-      {id:"r1",title:"Morning medicine",time:"08:00",days:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],active:true},
-      {id:"r2",title:"Drink water",time:"11:00",days:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],active:true}
-    ],settings:{language:"en",voice:true}};
-    fs.writeFileSync(DATA, JSON.stringify(db,null,2));
+  try {
+    fs.mkdirSync(path.dirname(DATA), { recursive: true });
+    if(!fs.existsSync(DATA)){
+      const db={users:[
+        {id:"elder-1",name:"Demo Elder",role:"elderly",pin:"demo123"},
+        {id:"caregiver-1",name:"Demo Caregiver",role:"caregiver",pin:"demo123"}
+      ],sessions:[],reminders:[
+        {id:"r1",title:"Morning medicine",time:"08:00",days:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],active:true},
+        {id:"r2",title:"Drink water",time:"11:00",days:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],active:true}
+      ],settings:{language:"en",voice:true}};
+      fs.writeFileSync(DATA, JSON.stringify(db,null,2));
+    }
+    return JSON.parse(fs.readFileSync(DATA,"utf8"));
+  } catch (err) {
+    // Fallback in-memory database if file system fails completely on Vercel
+    return {
+      users: [
+        {id:"elder-1",name:"Demo Elder",role:"elderly",pin:"demo123"},
+        {id:"caregiver-1",name:"Demo Caregiver",role:"caregiver",pin:"demo123"}
+      ],
+      sessions: [],
+      reminders: [],
+      settings: {language:"en",voice:true}
+    };
   }
-  return JSON.parse(fs.readFileSync(DATA,"utf8"));
 }
+
 function writeDB(db){
-  fs.mkdirSync(path.dirname(DATA), { recursive: true });
-  fs.writeFileSync(DATA, JSON.stringify(db,null,2));
+  try {
+    fs.mkdirSync(path.dirname(DATA), { recursive: true });
+    fs.writeFileSync(DATA, JSON.stringify(db,null,2));
+  } catch (err) {
+    console.error("Write DB failed (Read-only environment):", err.message);
+  }
 }
 
 const GAMES = {
