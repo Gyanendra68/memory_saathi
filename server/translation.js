@@ -1,32 +1,10 @@
 /**
  * server/translation.js
- * -----------------------------------------------------------------------
- * Thin, isolated wrapper around a free machine-translation engine.
- *
- * translateText(text, sourceLanguage, targetLanguage) is the ONLY thing
- * the rest of the app depends on. If a different engine is ever needed
- * (e.g. a paid API key becomes available later), only this file changes.
- *
- * Engine used: Google Translate's public web endpoint
- * (translate.googleapis.com/translate_a/single). It requires no API key
- * and no billing account, which is why it was chosen for this SIH demo.
- * It is the same endpoint used by many open-source "free Google Translate"
- * libraries. Being an unofficial/undocumented endpoint, Google could
- * change or rate-limit it without notice -- see README "Limitations".
- *
- * Language support was verified (not assumed) against Google's published
- * supported-language list before choosing this engine:
- *   - Assamese (as)              -- added May 2022
- *   - Mizo (lus)                 -- added May 2022
- *   - Meiteilon / Manipuri (mni-Mtei) -- added May 2022
- *   - Khasi (kha)                -- added June 2024
- * All four, plus English, are confirmed supported.
+ * Robust translation wrapper with automatic fallback (Google Translate + MyMemory)
  */
 
 const https = require("https");
 
-// MemorySaathi's internal language codes (used in localStorage, the
-// settings dropdown and window.I18N) -> Google Translate's codes.
 const LANG_MAP = {
   en: "en",
   as: "as",
@@ -38,17 +16,9 @@ const LANG_MAP = {
 const MAX_TEXT_LENGTH = 2000;
 const REQUEST_TIMEOUT_MS = 8000;
 
-function callGoogleTranslate(text, sourceLang, targetLang) {
+// Helper function to make HTTPS requests safely
+function fetchUrl(url) {
   return new Promise((resolve, reject) => {
-    const qs = new URLSearchParams({
-      client: "gtx",
-      sl: sourceLang,
-      tl: targetLang,
-      dt: "t",
-      q: text
-    });
-    const url = `https://translate.googleapis.com/translate_a/single?${qs.toString()}`;
-
     const req = https.get(
       url,
       { headers: { "User-Agent": "Mozilla/5.0 (MemorySaathi/1.0)" } },
@@ -57,32 +27,58 @@ function callGoogleTranslate(text, sourceLang, targetLang) {
         res.on("data", (chunk) => { data += chunk; });
         res.on("end", () => {
           if (res.statusCode !== 200) {
-            reject(new Error(`Translation engine responded with status ${res.statusCode}`));
+            reject(new Error(`Status code ${res.statusCode}`));
             return;
           }
-          try {
-            const parsed = JSON.parse(data);
-            const translated = (parsed[0] || []).map((segment) => segment[0]).join("");
-            resolve(translated);
-          } catch (err) {
-            reject(new Error("Could not parse translation engine response"));
-          }
+          resolve(data);
         });
       }
     );
     req.on("error", (err) => reject(err));
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy(new Error("Translation engine request timed out"));
+      req.destroy(new Error("Request timed out"));
     });
   });
 }
 
-/**
- * Translate `text` from `sourceLanguage` to `targetLanguage`, both given
- * as MemorySaathi internal codes ("en", "as", "mni", "kha", "miz").
- * Throws on failure -- callers are expected to catch and fall back to the
- * original text (see server.js POST /api/translate).
- */
+async function callGoogleTranslate(text, sourceLang, targetLang) {
+  // 1. Pehle Google Translate try karein
+  try {
+    const qs = new URLSearchParams({
+      client: "gtx",
+      sl: sourceLang,
+      tl: targetLang,
+      dt: "t",
+      q: text
+    });
+    const url = `https://translate.googleapis.com/translate_a/single?${qs.toString()}`;
+    const data = await fetchUrl(url);
+    const parsed = JSON.parse(data);
+    const translated = (parsed[0] || []).map((segment) => segment[0]).join("");
+    if (translated && translated.trim()) return translated;
+  } catch (err) {
+    console.warn("Google Translate failed, switching to fallback API...", err.message);
+  }
+
+  // 2. Fallback: MyMemory Translation API (Vercel par Assamese ke liye best reliable backup)
+  try {
+    const myMemoryLangMap = { as: "as", en: "en", "mni-Mtei": "mni", kha: "kha", lus: "miz" };
+    const sl = myMemoryLangMap[sourceLang] || sourceLang;
+    const tl = myMemoryLangMap[targetLang] || targetLang;
+
+    const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${sl}|${tl}`;
+    const data = await fetchUrl(myMemoryUrl);
+    const parsed = JSON.parse(data);
+    if (parsed && parsed.responseData && parsed.responseData.translatedText) {
+      return parsed.responseData.translatedText;
+    }
+  } catch (fallbackErr) {
+    console.error("Fallback translation engine also failed:", fallbackErr.message);
+  }
+
+  throw new Error("All translation engines failed");
+}
+
 async function translateText(text, sourceLanguage, targetLanguage) {
   if (typeof text !== "string" || !text.trim()) {
     throw new Error("text is required");
